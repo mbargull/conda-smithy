@@ -713,12 +713,26 @@ def render_README(jinja_env, forge_config, forge_dir):
 
 
 def render_versions(jinja_env, forge_config, forge_dir):
-    installed_vers = conda_build.conda_interface.get_installed_version(
-                            conda_build.conda_interface.root_dir,
-                            ["conda-forge-pinning", "conda-build", "python"])
-    installed_vers['conda-smithy'] = __version__
+    from conda_build.conda_interface import MatchSpec, linked_data, root_dir
+    prefix = root_dir
+    linked_pkgs = {record.name: record for record in linked_data(prefix).values()}
+    main_pkg = 'conda-smithy'
+    specs_str = [main_pkg] + list(linked_pkgs[main_pkg].depends or [])
+    names = sorted(MatchSpec(spec_str).name for spec_str in specs_str)
+    pkgs_info = OrderedDict()
+    for name in names:
+        record = linked_pkgs[name]
+        pkgs_info[name] = OrderedDict((
+            ('channel', str(record.channel)),
+            ('subdir', record.subdir),
+            ('name', record.name),
+            ('version', record.version),
+            ('build_number', record.build_number),
+            ('build', record.build),
+        ))
+    assert pkgs_info[main_pkg] == __version__
     with write_file(os.path.join(forge_dir, '.smithy-versions.json')) as fh:
-        s = json.dumps(installed_vers, sort_keys=True, indent=2)
+        s = json.dumps(pkgs_info, sort_keys=True, indent=2)
         try:  # json.dumps has inconsistent text vs binary behavior on py2/3
             s = s.decode('utf-8')
         except AttributeError:
